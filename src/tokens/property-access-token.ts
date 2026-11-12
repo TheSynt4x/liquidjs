@@ -9,6 +9,8 @@ import { FilteredValueToken } from './filtered-value-token'
 import { TokenKind } from '../parser'
 
 export class PropertyAccessToken extends Token {
+  /** @internal cached literal path for the sync fast path; `null` when not applicable */
+  public literalProps?: (string | number)[] | null = undefined
   constructor (
     public variable: QuotedToken | RangeToken | LiteralToken | NumberToken | FilteredValueToken | undefined,
     public props: (ValueToken | IdentifierToken)[],

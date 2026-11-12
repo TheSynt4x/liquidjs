@@ -57,3 +57,11 @@ export function toValueSync<T> (val: Generator<unknown, T, unknown> | T): T {
   } while (!done)
   return value
 }
+
+/**
+ * Returned by the `*Fast` evaluators when a value can't be produced synchronously
+ * (a Promise/iterator was hit). The caller must `yield *` the wrapped generator.
+ */
+export class Deferred {
+  constructor (public gen: Generator<unknown, unknown, unknown>) {}
+}
