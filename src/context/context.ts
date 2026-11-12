@@ -3,7 +3,7 @@ import { Drop } from '../drop/drop'
 import { __assign } from 'tslib'
 import { NormalizedFullOptions, defaultOptions, RenderOptions } from '../liquid-options'
 import { createScope, Scope } from './scope'
-import { hasOwnProperty, isArray, isNil, isUndefined, isString, isFunction, isNumber, toLiquid, InternalUndefinedVariableError, toValueSync, isObject, Limiter, TimeLimiter, toValue, readArrayElement, isPromise, isIterator } from '../util'
+import { hasOwnProperty, isArray, isNil, isUndefined, isString, isFunction, isNumber, toLiquid, InternalUndefinedVariableError, toValueSync, isObject, Limiter, TimeLimiter, toValue, readArrayElement, isPromise, isIterator, Deferred } from '../util'
 
 type PropertyKey = string | number;
 
@@ -88,9 +88,9 @@ export class Context {
   public getFromScope (scope: unknown, paths: PropertyKey[] | string): IterableIterator<unknown> {
     return toValueSync(this._getFromScope(scope, paths)) as IterableIterator<unknown>
   }
-  public * _getFromScope (scope: unknown, paths: (PropertyKey | Drop)[] | string, strictVariables = this.strictVariables): Generator<unknown, unknown, unknown> {
+  public * _getFromScope (scope: unknown, paths: (PropertyKey | Drop)[] | string, strictVariables = this.strictVariables, start = 0): Generator<unknown, unknown, unknown> {
     if (isString(paths)) paths = paths.split('.')
-    for (let i = 0; i < paths.length; i++) {
+    for (let i = start; i < paths.length; i++) {
       scope = this.readProperty(scope as object, paths[i])
       if (isPromise(scope) || isIterator(scope)) scope = yield scope
       if (strictVariables && isUndefined(scope)) {
@@ -98,6 +98,27 @@ export class Context {
       }
     }
     return scope
+  }
+  /**
+   * Synchronous walk of literal `paths` from the resolved scope. Returns the value,
+   * or a `Deferred` that continues the walk once a Promise/iterator is hit.
+   */
+  public _getFast (paths: PropertyKey[]): unknown {
+    let scope: unknown = this.findScope(paths[0] as string)
+    const strict = this.strictVariables
+    for (let i = 0; i < paths.length; i++) {
+      scope = this.readProperty(scope as object, paths[i])
+      if (isPromise(scope) || isIterator(scope)) return new Deferred(this._resumeFromScope(scope, paths, i, strict))
+      if (strict && scope === undefined) {
+        throw new InternalUndefinedVariableError(paths.slice(0, i + 1).join('.'))
+      }
+    }
+    return scope
+  }
+  private * _resumeFromScope (pending: unknown, paths: PropertyKey[], i: number, strict: boolean): Generator<unknown, unknown, unknown> {
+    const scope = yield pending
+    if (strict && isUndefined(scope)) throw new InternalUndefinedVariableError(paths.slice(0, i + 1).join('.'))
+    return yield * this._getFromScope(scope, paths, strict, i + 1)
   }
   public push (ctx: object) {
     return this.scopes.push(ctx)
